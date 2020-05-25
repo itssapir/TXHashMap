@@ -22,6 +22,8 @@ public class LocalStorage {
 	protected HashMap<PCNode,PCNode> producedAfterConsuming = new HashMap<>();
 	protected HashMap<Log,Integer> logVersionMap = new HashMap<>();
 	protected HashMap<Log,LocalLog> logMap = new HashMap<>();
+	//Hash Map local storage:
+	protected HashSet<
 
 
 
