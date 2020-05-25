@@ -11,7 +11,6 @@ public class TXHashMap<K,V> {
         final int hash;
         final K key;
         V value;
-        int updateTime;
         Node<K,V> next;
 
         Node(int hash, K key, V value, int updateTime, Node<K,V> next) {
