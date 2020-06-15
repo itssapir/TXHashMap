@@ -342,7 +342,8 @@ public class TX {
 				lockedLNodes.add(node);
 			}
 		}
-		
+
+
 		// locking queues
 		
 		HashMap<Queue, LocalQueue> qMap = localStorage.queueMap;
@@ -385,6 +386,22 @@ public class TX {
 			log.lock();
 		}
 
+		// locking hash tables
+
+		HashMap<HashNodeList, HashMap<Object, HashNode>> hashWriteSet = localStorage.hashWriteSet;
+
+		HashSet<HashNodeList> lockedHNodeLists = new HashSet<>();
+
+		if (!abort) {
+			for (HashNodeList hnlist : hashWriteSet.keySet()) {
+				if (!hnlist.tryLock()) {
+					abort = true;
+					break;
+				}
+				lockedHNodeLists.add(hnlist);
+			}
+		}
+
 		// validate read set
 
 		HashSet<LNode> readSet = localStorage.readSet;
@@ -409,6 +426,7 @@ public class TX {
 				}
 			}
 		}
+
 
 		// validate queue
 
@@ -456,6 +474,22 @@ public class TX {
 			}
 		}
 
+		// validate hash tables
+		HashSet<HashNodeList> hashReadSet = localStorage.hashReadSet;
+		
+		if (!abort) {
+			for (HashNodeList hnList : hashReadSet) {
+				if (!lockedHNodeLists.contains(hnList) && hnList.isLocked()) {
+					// someone else holds the lock
+					abort = true;
+					break;
+				} else if (hnList.getVersion() > localStorage.readVersion) {
+					abort = true;
+					break;
+				}
+			}
+		}
+
 		// increment GVC
 
 		long writeVersion = 0;
@@ -483,6 +517,7 @@ public class TX {
 				node.setSingleton(false);
 			}
 		}
+
 
 		if (!abort) {
 			// Queue
@@ -543,6 +578,39 @@ public class TX {
 			}
 		}
 
+		if (!abort) {
+			//hash table
+			for (Entry<HashNodeList, HashMap<Object, HashNode>> wsEntry : hashWriteSet.entrySet()) {
+				HashNodeList hnList = wsEntry.getKey();
+				for (HashNode node : wsEntry.getValue().values()) {
+					// search the write set node in the table hnList:
+					HashNode current = hnList.head;
+					HashNode prev = null;
+					while (current != null) {
+						if (node.getKey().equals(current.getKey())) {
+							current.value = node.value;
+							current.isDeleted = node.isDeleted;
+							if (node.isDeleted) {
+								if (prev == null) {
+									hnList.head = current.next;
+								} else {
+									prev.next = current.next;
+								}
+							}
+							break;
+						}
+						prev = current;
+						current = current.next;
+					}
+					if (current == null && !node.isDeleted) {
+						// add new node 
+						prev.next = node;
+					}
+				}
+				hnList.setVersion(writeVersion);
+			}
+		}
+
 
 		// release locks, even if abort
 
@@ -557,6 +625,7 @@ public class TX {
 			}
 		}
 
+
 		for (RBTree tree: treeMap.keySet())
 		{
 			assert(treeMap.get(tree).lockedSet == true): "very bad";
@@ -567,6 +636,8 @@ public class TX {
 		{
 			log.unlock();
 		}
+
+		lockedHNodeLists.forEach(HashNodeList::unlock);
 
 		// update index
 
@@ -602,6 +673,8 @@ public class TX {
 		localStorage.logVersionMap.clear();
 		localStorage.innerLogMap.clear();
 		localStorage.innerLogVersionMap.clear();
+		localStorage.hashReadSet.clear();
+		localStorage.hashWriteSet.clear();
 		localStorage.TX = false;
 		localStorage.readOnly = true;
 		localStorage.abortAll = false;
