@@ -603,8 +603,12 @@ public class TX {
 						current = current.next;
 					}
 					if (current == null && !node.isDeleted) {
-						// add new node 
-						prev.next = node;
+						// add new node
+						if (prev == null) {
+							hnList.head = node;
+						} else {
+							prev.next = node;
+						}
 					}
 				}
 				hnList.setVersion(writeVersion);

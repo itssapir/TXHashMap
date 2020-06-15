@@ -1,10 +1,9 @@
 import java.lang.reflect.Field;
-import java.util.ArrayList;
 //import java.util.HashMap;
 import sun.misc.Unsafe;
 
 public class HashMap<K,V> {
-    private static final int DEFAULT_SIZE = 128;
+    private static final int DEFAULT_SIZE = 8;
  
     private HashNodeList[] table = new HashNodeList[DEFAULT_SIZE];
     private int size;
@@ -31,6 +30,11 @@ public class HashMap<K,V> {
 		}
     }
 
+    public HashMap() {
+        for (int i=0; i<table.length; ++i) {
+            table[i] = new HashNodeList();
+        }
+    }
     public void clear() {
 
     }
@@ -58,7 +62,7 @@ public class HashMap<K,V> {
         int keyHash = (key == null) ? 0 : (h = key.hashCode()) ^ (h >>> 16); // from java standard implementation.
         // TODO: handle the resize
 
-        int tableIdx = (table.length) & keyHash; // TODO: should we save the table length in the tx?
+        int tableIdx = (table.length - 1) & keyHash; // TODO: should we save the table length in the tx?
         HashNodeList hnList = table[tableIdx];
         
         // TX
@@ -94,7 +98,7 @@ public class HashMap<K,V> {
         int keyHash = (key == null) ? 0 : (h = key.hashCode()) ^ (h >>> 16); // from java standard implementation.
         // TODO: handle the resize
 
-        int tableIdx = (table.length) & keyHash; // TODO: should we save the table length in the tx?
+        int tableIdx = (table.length - 1) & keyHash; // TODO: should we save the table length in the tx?
         HashNodeList hnList = table[tableIdx];
         
         // TX
@@ -183,7 +187,7 @@ public class HashMap<K,V> {
         return oldNode;
     }
 
-    public V remove(Object key) {
+    public V remove(Object key)  throws TXLibExceptions.AbortException {
         return null;
     }
 
