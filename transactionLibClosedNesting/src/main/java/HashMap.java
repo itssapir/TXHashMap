@@ -43,7 +43,36 @@ public class HashMap<K,V> {
         return false;
     }
 
-    public boolean containsKey(Object key) {
+    public boolean containsKey(K key) {
+        LocalStorage localStorage = TX.lStorage.get();
+        int h;
+        int keyHash = (key == null) ? 0 : (h = key.hashCode()) ^ (h >>> 16); // from java standard implementation.
+        // TODO: handle the resize
+
+        int tableIdx = (table.length - 1) & keyHash; // TODO: should we save the table length in the tx?
+        HashNodeList hnList = table[tableIdx];
+        
+        // TX
+        if (hnList.isLocked() || hnList.getVersion() > localStorage.readVersion) {
+            // abort TX
+            localStorage.TX = false;
+            TXLibExceptions excep = new TXLibExceptions();
+            throw excep.new AbortException();
+        }
+
+        //insert to read set:
+        localStorage.hashReadSet.add(hnList);
+
+        HashNode oldNode = writeSetGet(key, hnList);
+
+        if (oldNode == null) {
+            //check in table
+            oldNode = getNode(hnList, key);
+        }
+        if (oldNode != null) {
+            return true;
+        }
+
         return false;
     }
 
@@ -131,6 +160,44 @@ public class HashMap<K,V> {
         return oldVal;
     }
 
+    public V remove(K key)  throws TXLibExceptions.AbortException {
+        LocalStorage localStorage = TX.lStorage.get();
+        int h;
+        int keyHash = (key == null) ? 0 : (h = key.hashCode()) ^ (h >>> 16); // from java standard implementation.
+        // TODO: handle the resize
+
+        int tableIdx = (table.length - 1) & keyHash; // TODO: should we save the table length in the tx?
+        HashNodeList hnList = table[tableIdx];
+        
+        // TX
+        localStorage.readOnly = false;
+        if (hnList.isLocked() || hnList.getVersion() > localStorage.readVersion) {
+            // abort TX
+            localStorage.TX = false;
+            TXLibExceptions excep = new TXLibExceptions();
+            throw excep.new AbortException();
+        }
+    
+        // search old val
+        V oldVal = null;
+
+        //insert to read set:
+        localStorage.hashReadSet.add(hnList);
+
+        HashNode oldNode = writeSetGet(key, hnList);
+        if (oldNode == null) {
+            //check in table
+            oldNode = getNode(hnList, key);
+        }
+        if (oldNode != null) {
+            oldVal = (V)oldNode.getValue();
+            HashNode newNode = new HashNode(keyHash, key, oldVal, null);
+            newNode.isDeleted = true;
+            writeSetInsert(newNode, hnList);
+        }
+        return oldVal;
+    }
+
     // return Node if it exists or null otherwise
     private HashNode getNode(HashNodeList hnList, K key) throws TXLibExceptions.AbortException {
         LocalStorage localStorage = TX.lStorage.get();
@@ -187,9 +254,7 @@ public class HashMap<K,V> {
         return oldNode;
     }
 
-    public V remove(Object key)  throws TXLibExceptions.AbortException {
-        return null;
-    }
+
 
 
 
