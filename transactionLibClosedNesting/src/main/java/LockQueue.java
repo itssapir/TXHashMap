@@ -25,8 +25,13 @@ public class LockQueue {
     }
 
 
-    public boolean isHeldByCurrent()
-    {
+    public boolean isHeldByCurrent() {
             return lock.isHeldByCurrentThread();
     }
+
+    public boolean isLocked() {
+        return lock.isLocked();
+    }
+
+
 }
