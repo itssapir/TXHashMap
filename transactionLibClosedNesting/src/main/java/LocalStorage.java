@@ -23,7 +23,9 @@ public class LocalStorage {
 	protected HashMap<Log,Integer> logVersionMap = new HashMap<>();
 	protected HashMap<Log,LocalLog> logMap = new HashMap<>();
 	//Hash Map local storage:
-	protected HashSet<
+	protected HashSet<HashNodeList> hashReadSet = new HashSet<>();
+	protected HashMap<Integer, HashMap<Object, HashNode>> hashWriteSet = new HashMap<>();
+
 
 
 
