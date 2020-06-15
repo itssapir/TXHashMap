@@ -24,7 +24,7 @@ public class LocalStorage {
 	protected HashMap<Log,LocalLog> logMap = new HashMap<>();
 	//Hash Map local storage:
 	protected HashSet<HashNodeList> hashReadSet = new HashSet<>();
-	protected HashMap<Integer, HashMap<Object, HashNode>> hashWriteSet = new HashMap<>();
+	protected HashMap<HashNodeList, HashMap<Object, HashNode>> hashWriteSet = new HashMap<>();
 
 
 

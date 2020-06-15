@@ -75,7 +75,7 @@ public class HashMap<K,V> {
         // search old val
         V oldVal = null;
 
-        HashNode oldNode = writeSetGet(key, tableIdx);
+        HashNode oldNode = writeSetGet(key, hnList);
 
         if (oldNode == null) {
             //check in table
@@ -114,7 +114,7 @@ public class HashMap<K,V> {
         
         //insert to write set
         HashNode newNode = new HashNode(keyHash, key, value, null);
-        HashNode oldNode = writeSetInsert(newNode, tableIdx);
+        HashNode oldNode = writeSetInsert(newNode, hnList);
 
         if (oldNode == null) {
             //check in table
@@ -160,26 +160,26 @@ public class HashMap<K,V> {
     }
 
     // insert new node to the write set, and return the old node if existed
-    private HashNode writeSetInsert(HashNode newNode, int tableIdx ) {
+    private HashNode writeSetInsert(HashNode newNode, HashNodeList hnList) {
         LocalStorage localStorage = TX.lStorage.get();
-        java.util.HashMap<Object, HashNode> idxWriteSet = localStorage.hashWriteSet.get(tableIdx);
-        if (idxWriteSet == null) {
-            idxWriteSet = new java.util.HashMap<>();
-            localStorage.hashWriteSet.put(tableIdx, idxWriteSet);
+        java.util.HashMap<Object, HashNode> listWriteSet = localStorage.hashWriteSet.get(hnList);
+        if (listWriteSet == null) {
+            listWriteSet = new java.util.HashMap<>();
+            localStorage.hashWriteSet.put(hnList, listWriteSet);
         }
 
-        HashNode oldNode = idxWriteSet.put(newNode.getKey() , newNode);
+        HashNode oldNode = listWriteSet.put(newNode.getKey() , newNode);
         return oldNode;
     }
 
     // get node from the write set
-    private HashNode writeSetGet(K key, int tableIdx ) {
+    private HashNode writeSetGet(K key, HashNodeList hnList) {
         LocalStorage localStorage = TX.lStorage.get();
-        java.util.HashMap<Object, HashNode> idxWriteSet = localStorage.hashWriteSet.get(tableIdx);
-        if (idxWriteSet == null) {
+        java.util.HashMap<Object, HashNode> listWriteSet = localStorage.hashWriteSet.get(hnList);
+        if (listWriteSet == null) {
             return null;
         }
-        HashNode oldNode = idxWriteSet.get(key);
+        HashNode oldNode = listWriteSet.get(key);
         return oldNode;
     }
 
