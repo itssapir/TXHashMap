@@ -1,78 +1,35 @@
+import java.lang.reflect.Field;
+import java.util.ArrayList;
 //import java.util.HashMap;
-import java.util.concurrent.atomic.AtomicLong;
+import sun.misc.Unsafe;
 
 public class HashMap<K,V> {
     private static final int DEFAULT_SIZE = 128;
-    // Node structure
-    static class Node<K,V> {
-        final int hash;
-        final K key;
-        V value;
-        Node<K,V> next;
-
-        Node(int hash, K key, V value, Node<K,V> next) {
-            this.hash = hash;
-            this.key = key;
-            this.value = value;
-            this.next = next;
-        }
-
-        public final K getKey() {
-            return key;
-        }
-        public final V getValue() {
-            return value;
-        }
-        public final String toString() {
-            return key + "=" + value;
-        }
-        
-        public final V setValue(V newValue) {
-            V oldValue = value;
-            value = newValue;
-            return oldValue;
-        }
-    }
-
-    static class NodeList<K,V> {
-        private static final long versionNegMask = 0x0L;
-        private LockQueue nlLock = new LockQueue();
-        public Node<K,V> head;
-        private AtomicLong versionAndFlags = new AtomicLong();
-      
-        NodeList() {
-            this.head = null;
-        }
-        
-        public long getVersion() {
-            return (versionAndFlags.get() & (~versionNegMask));
-        }
-    
-        public void setVersion(long version) {
-            long l = versionAndFlags.get();
-            assert(nlLock.isHeldByCurrent());
-            l &= versionNegMask;
-            l |= (version & (~versionNegMask));
-            versionAndFlags.set(l);
-        }
-    
-    
-        public void lock() {
-            nlLock.lock();
-        }
-    
-        public boolean tryLock() {
-            return nlLock.tryLock();
-        }
-    
-        public void unlock() {
-            nlLock.unlock();
-        }
-    }
-
-    @SuppressWarnings({"unchecked"}) // TODO: should we remove this?
-    private NodeList<K,V>[] table = (NodeList<K,V>[])new NodeList[DEFAULT_SIZE];
+ 
+    private HashNodeList[] table = new HashNodeList[DEFAULT_SIZE];
     private int size;
+
+    // TODO: needed for fence?
+    private static Unsafe unsafe = null;
+	static {
+		Field f = null;
+		try {
+			f = Unsafe.class.getDeclaredField("theUnsafe");
+		} catch (NoSuchFieldException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+        assert f != null;
+        f.setAccessible(true);
+		try {
+			unsafe = (Unsafe) f.get(null);
+		} catch (IllegalArgumentException | IllegalAccessException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+    }
 
     public void clear() {
 
@@ -95,12 +52,135 @@ public class HashMap<K,V> {
     }
 
 
-    public V get(Object key) {
+    public V get(K key) throws TXLibExceptions.AbortException {
+        LocalStorage localStorage = TX.lStorage.get();
+        int h;
+        int keyHash = (key == null) ? 0 : (h = key.hashCode()) ^ (h >>> 16); // from java standard implementation.
+        // TODO: handle the resize
+
+        int tableIdx = (table.length) & keyHash; // TODO: should we save the table length in the tx?
+        HashNodeList hnList = table[tableIdx];
+        
+        // TX
+        if (hnList.isLocked() || hnList.getVersion() > localStorage.readVersion) {
+            // abort TX
+            localStorage.TX = false;
+            TXLibExceptions excep = new TXLibExceptions();
+            throw excep.new AbortException();
+        }
+
+        //insert to read set:
+        localStorage.hashReadSet.add(hnList);
+
+        // search old val
+        V oldVal = null;
+
+        HashNode oldNode = writeSetGet(key, tableIdx);
+
+        if (oldNode == null) {
+            //check in table
+            oldNode = getNode(hnList, key);
+        }
+        if (oldNode != null) {
+            oldVal = (V)oldNode.getValue();
+        }
+
+        return oldVal;
+    }
+
+    public V put(K key, V value) throws TXLibExceptions.AbortException {
+        LocalStorage localStorage = TX.lStorage.get();
+        int h;
+        int keyHash = (key == null) ? 0 : (h = key.hashCode()) ^ (h >>> 16); // from java standard implementation.
+        // TODO: handle the resize
+
+        int tableIdx = (table.length) & keyHash; // TODO: should we save the table length in the tx?
+        HashNodeList hnList = table[tableIdx];
+        
+        // TX
+        localStorage.readOnly = false;
+        if (hnList.isLocked() || hnList.getVersion() > localStorage.readVersion) {
+            // abort TX
+            localStorage.TX = false;
+            TXLibExceptions excep = new TXLibExceptions();
+            throw excep.new AbortException();
+        }
+    
+        // search old val
+        V oldVal = null;
+
+        //insert to read set:
+        localStorage.hashReadSet.add(hnList);
+        
+        //insert to write set
+        HashNode newNode = new HashNode(keyHash, key, value, null);
+        HashNode oldNode = writeSetInsert(newNode, tableIdx);
+
+        if (oldNode == null) {
+            //check in table
+            oldNode = getNode(hnList, key);
+        }
+        if (oldNode != null) {
+            oldVal = (V)oldNode.getValue();
+        }
+
+        return oldVal;
+    }
+
+    // return Node if it exists or null otherwise
+    private HashNode getNode(HashNodeList hnList, K key) throws TXLibExceptions.AbortException {
+        LocalStorage localStorage = TX.lStorage.get();
+        K currKey = null;
+        HashNode current = hnList.head;
+
+        while (current != null){
+            if (hnList.isLocked()) {
+                // abort TX
+                localStorage.TX = false;
+                TXLibExceptions excep = new TXLibExceptions();
+                throw excep.new AbortException();
+            }
+            // TODO: do we need fence?
+            unsafe.loadFence();
+            currKey = (K)current.getKey();
+            HashNode next = current.next;
+            unsafe.loadFence();
+            if (hnList.isLocked() || hnList.getVersion() > localStorage.readVersion ) {
+                // abort TX
+                localStorage.TX = false;
+                TXLibExceptions excep = new TXLibExceptions();
+                throw excep.new AbortException();
+            }
+            if (key.equals(currKey)) {
+                return current;
+            }
+            current = next;
+        }
         return null;
     }
 
-    public V put(K key, V value) {
-        return null;
+    // insert new node to the write set, and return the old node if existed
+    private HashNode writeSetInsert(HashNode newNode, int tableIdx ) {
+        LocalStorage localStorage = TX.lStorage.get();
+        java.util.HashMap<Object, HashNode> idxWriteSet = localStorage.hashWriteSet.get(tableIdx);
+        if (idxWriteSet == null) {
+            idxWriteSet = new java.util.HashMap<>();
+            localStorage.hashWriteSet.put(tableIdx, idxWriteSet);
+        }
+
+        HashNode oldNode = idxWriteSet.put(newNode.getKey() , newNode);
+        return oldNode;
+    }
+
+    // get node from the write set
+    private HashNode writeSetGet(K key, int tableIdx ) {
+        LocalStorage localStorage = TX.lStorage.get();
+        java.util.HashMap<Object, HashNode> idxWriteSet = localStorage.hashWriteSet.get(tableIdx);
+        if (idxWriteSet == null) {
+            return null;
+        }
+        HashNode oldNode = idxWriteSet.get(key);
+        return oldNode;
     }
 
     public V remove(Object key) {
@@ -111,3 +191,6 @@ public class HashMap<K,V> {
 
     // TODO: other methods as required.
 }
+
+
+    
