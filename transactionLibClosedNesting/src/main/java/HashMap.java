@@ -70,7 +70,7 @@ public class HashMap<K,V> {
             //check in table
             oldNode = getNode(hnList, key);
         }
-        if (oldNode != null) {
+        if (oldNode != null && oldNode.isDeleted == false) {
             return true;
         }
 
@@ -120,7 +120,7 @@ public class HashMap<K,V> {
             //check in table
             oldNode = getNode(hnList, key);
         }
-        if (oldNode != null) {
+        if (oldNode != null && oldNode.isDeleted == false) {
             oldVal = (V)oldNode.getValue();
         }
 
@@ -164,7 +164,7 @@ public class HashMap<K,V> {
             //check in table
             oldNode = getNode(hnList, key);
         }
-        if (oldNode != null) {
+        if (oldNode != null && oldNode.isDeleted == false) {
             oldVal = (V)oldNode.getValue();
         }
 
@@ -205,7 +205,7 @@ public class HashMap<K,V> {
             //check in table
             oldNode = getNode(hnList, key);
         }
-        if (oldNode != null) {
+        if (oldNode != null && oldNode.isDeleted == false) {
             oldVal = (V)oldNode.getValue();
             HashNode newNode = new HashNode(keyHash, key, oldVal, null);
             newNode.isDeleted = true;
@@ -261,10 +261,7 @@ public class HashMap<K,V> {
         }
 
         HashNode oldNode = listWriteSet.put(newNode.getKey() , newNode);
-        if (oldNode != null && oldNode.isDeleted == false) {
-            return oldNode;
-        }
-        return null;
+        return oldNode;
     }
 
     // get node from the write set
@@ -280,10 +277,7 @@ public class HashMap<K,V> {
             return null;
         }
         HashNode oldNode = listWriteSet.get(key);
-        if (oldNode != null && oldNode.isDeleted == false) {
-            return oldNode;
-        }
-        return null;
+        return oldNode;
     }
 
 
