@@ -11,8 +11,8 @@ public class HashMapTXTest2 {
     @Test
     public void testHashMapMultiThreadMultiMap() throws InterruptedException {
         CountDownLatch latch = new CountDownLatch(1);
-        HashMap<Integer, String> HM1 = new HashMap<>();
-        HashMap<Integer, String> HM2 = new HashMap<>();
+        TXHashMap<Integer, String> HM1 = new TXHashMap<>();
+        TXHashMap<Integer, String> HM2 = new TXHashMap<>();
         
         int threadAmnt = 16;
         List<Thread> threads = new ArrayList<>();
@@ -29,16 +29,17 @@ public class HashMapTXTest2 {
         for (Thread t : threads) {
         	t.join();
         }
+        return;
     }
 
     class Run implements Runnable {
 
-        HashMap<Integer, String> HM1;
-        HashMap<Integer, String> HM2;
+        TXHashMap<Integer, String> HM1;
+        TXHashMap<Integer, String> HM2;
         String threadName;
         CountDownLatch latch;
 
-        Run(String name, CountDownLatch l, HashMap<Integer, String> hm1, HashMap<Integer, String> hm2) {
+        Run(String name, CountDownLatch l, TXHashMap<Integer, String> hm1, TXHashMap<Integer, String> hm2) {
             threadName = name;
             latch = l;
             HM1 = hm1;
@@ -65,6 +66,14 @@ public class HashMapTXTest2 {
                 try {
                     try {
                         TX.TXbegin();
+                        /*
+                        // test for size, don't use more than 9 threads..
+                        assertEquals(null, HM1.put(k_c, c));
+                        assertEquals(null, HM2.put(k_b, b));
+                        assertEquals(null, HM2.put(k_c, c));                
+                        assertEquals(c, HM2.put(k_c, c2));
+                        assertEquals(null, HM1.put(k_a, a));
+                        */
                         assertEquals(false, HM1.containsKey(k_c));
                         assertEquals(false, HM2.containsKey(k_c));
                         assertEquals(null, HM1.get(k_c));

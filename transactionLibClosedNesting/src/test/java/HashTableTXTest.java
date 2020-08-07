@@ -9,7 +9,7 @@ public class HashTableTXTest {
     @Test
     public void testLinkedListMultiThread() throws InterruptedException {
         CountDownLatch latch = new CountDownLatch(1);
-        HashMap<Integer,String> HM = new HashMap<>();
+        TXHashMap<Integer,String> HM = new TXHashMap<>();
         Thread T1 = new Thread(new Run("T1", latch, HM));
         Thread T2 = new Thread(new Run("T2", latch, HM));
         Thread T3 = new Thread(new Run("T3", latch, HM));
@@ -24,11 +24,11 @@ public class HashTableTXTest {
 
     class Run implements Runnable {
 
-        HashMap<Integer,String> HM;
+        TXHashMap<Integer,String> HM;
         String threadName;
         CountDownLatch latch;
 
-        Run(String name, CountDownLatch l, HashMap<Integer,String> hm) {
+        Run(String name, CountDownLatch l, TXHashMap<Integer,String> hm) {
             threadName = name;
             latch = l;
             HM = hm;

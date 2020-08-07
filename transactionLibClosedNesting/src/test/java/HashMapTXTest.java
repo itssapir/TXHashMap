@@ -11,7 +11,7 @@ public class HashMapTXTest {
     @Test
     public void testHashMapMultiThread() throws InterruptedException {
         CountDownLatch latch = new CountDownLatch(1);
-        HashMap<Integer, String> HM = new HashMap<>();
+        TXHashMap<Integer, String> HM = new TXHashMap<>();
  
         int threadAmnt = 5;
         List<Thread> threads = new ArrayList<>();
@@ -32,11 +32,11 @@ public class HashMapTXTest {
 
     class Run implements Runnable {
 
-        HashMap<Integer, String> HM;
+        TXHashMap<Integer, String> HM;
         String threadName;
         CountDownLatch latch;
 
-        Run(String name, CountDownLatch l, HashMap<Integer, String> hm) {
+        Run(String name, CountDownLatch l, TXHashMap<Integer, String> hm) {
             threadName = name;
             latch = l;
             HM = hm;
