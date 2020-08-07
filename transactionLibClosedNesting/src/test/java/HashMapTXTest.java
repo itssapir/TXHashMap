@@ -9,9 +9,10 @@ import static junit.framework.TestCase.assertEquals;
 public class HashMapTXTest {
 
     @Test
-    public void testLinkedListMultiThread() throws InterruptedException {
+    public void testHashMapMultiThread() throws InterruptedException {
         CountDownLatch latch = new CountDownLatch(1);
         HashMap<Integer, String> HM = new HashMap<>();
+ 
         int threadAmnt = 5;
         List<Thread> threads = new ArrayList<>();
         for (int i = 0; i < threadAmnt; ++i) {
