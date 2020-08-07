@@ -39,10 +39,6 @@ public class HashMap<K,V> {
 
     }
 
-    public boolean isEmpty() {
-        return false;
-    }
-
     public boolean containsKey(K key) {
         LocalStorage localStorage = TX.lStorage.get();
         int h;
@@ -222,7 +218,7 @@ public class HashMap<K,V> {
                 TXLibExceptions excep = new TXLibExceptions();
                 throw excep.new AbortException();
             }
-            if (key.equals(currKey)) {
+            if (key.equals(currKey) && current.isDeleted == false) {
                 return current;
             }
             current = next;
@@ -240,7 +236,10 @@ public class HashMap<K,V> {
         }
 
         HashNode oldNode = listWriteSet.put(newNode.getKey() , newNode);
-        return oldNode;
+        if (oldNode != null && oldNode.isDeleted == false) {
+            return oldNode;
+        }
+        return null;
     }
 
     // get node from the write set
@@ -251,7 +250,10 @@ public class HashMap<K,V> {
             return null;
         }
         HashNode oldNode = listWriteSet.get(key);
-        return oldNode;
+        if (oldNode != null && oldNode.isDeleted == false) {
+            return oldNode;
+        }
+        return null;
     }
 
 
