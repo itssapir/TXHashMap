@@ -387,21 +387,21 @@ public class TX {
 		}
 
 		// locking hash tables
-
-		HashMap<HashNodeList, HashMap<Object, HashNode>> hashWriteSet = localStorage.hashWriteSet;
-
 		HashSet<HashNodeList> lockedHNodeLists = new HashSet<>();
 
-		if (!abort) {
-			for (HashNodeList hnlist : hashWriteSet.keySet()) {
-				if (!hnlist.tryLock()) {
-					abort = true;
-					break;
+		for (Entry<Object,LocalHashMap> entry : localStorage.hmMap.entrySet()) {
+			LocalHashMap hm = entry.getValue();
+			if (!abort) {
+				for (HashNodeList hnlist : hm.hashWriteSet.keySet()) {
+					if (!hnlist.tryLock()) {
+						abort = true;
+						break;
+					}
+					lockedHNodeLists.add(hnlist);
 				}
-				lockedHNodeLists.add(hnlist);
 			}
-		}
 
+	}
 		// validate read set
 
 		HashSet<LNode> readSet = localStorage.readSet;
@@ -475,17 +475,18 @@ public class TX {
 		}
 
 		// validate hash tables
-		HashSet<HashNodeList> hashReadSet = localStorage.hashReadSet;
-		
-		if (!abort) {
-			for (HashNodeList hnList : hashReadSet) {
-				if (!lockedHNodeLists.contains(hnList) && hnList.isLocked()) {
-					// someone else holds the lock
-					abort = true;
-					break;
-				} else if (hnList.getVersion() > localStorage.readVersion) {
-					abort = true;
-					break;
+		for (Entry<Object,LocalHashMap> entry : localStorage.hmMap.entrySet()) {	
+			LocalHashMap hm = entry.getValue();
+			if (!abort) {
+				for (HashNodeList hnList : hm.hashReadSet) {
+					if (!lockedHNodeLists.contains(hnList) && hnList.isLocked()) {
+						// someone else holds the lock
+						abort = true;
+						break;
+					} else if (hnList.getVersion() > localStorage.readVersion) {
+						abort = true;
+						break;
+					}
 				}
 			}
 		}
@@ -580,41 +581,43 @@ public class TX {
 
 		if (!abort) {
 			//hash table
-			for (Entry<HashNodeList, HashMap<Object, HashNode>> wsEntry : hashWriteSet.entrySet()) {
-				HashNodeList hnList = wsEntry.getKey();
-				for (HashNode node : wsEntry.getValue().values()) {
-					// search the write set node in the table hnList:
-					HashNode current = hnList.head;
-					HashNode prev = null;
-					while (current != null) {
-						if (node.getKey().equals(current.getKey())) {
-							current.value = node.value;
-							current.isDeleted = node.isDeleted;
-							if (node.isDeleted) {
-								if (prev == null) {
-									hnList.head = current.next;
-								} else {
-									prev.next = current.next;
+			for (Entry<Object,LocalHashMap> entry : localStorage.hmMap.entrySet()) {
+				LocalHashMap hm = entry.getValue();
+				for (Entry<HashNodeList, HashMap<Object, HashNode>> wsEntry : hm.hashWriteSet.entrySet()) {
+					HashNodeList hnList = wsEntry.getKey();
+					for (HashNode node : wsEntry.getValue().values()) {
+						// search the write set node in the table hnList:
+						HashNode current = hnList.head;
+						HashNode prev = null;
+						while (current != null) {
+							if (node.getKey().equals(current.getKey())) {
+								current.value = node.value;
+								current.isDeleted = node.isDeleted;
+								if (node.isDeleted) {
+									if (prev == null) {
+										hnList.head = current.next;
+									} else {
+										prev.next = current.next;
+									}
 								}
+								break;
 							}
-							break;
+							prev = current;
+							current = current.next;
 						}
-						prev = current;
-						current = current.next;
-					}
-					if (current == null && !node.isDeleted) {
-						// add new node
-						if (prev == null) {
-							hnList.head = node;
-						} else {
-							prev.next = node;
+						if (current == null && !node.isDeleted) {
+							// add new node
+							if (prev == null) {
+								hnList.head = node;
+							} else {
+								prev.next = node;
+							}
 						}
 					}
+					hnList.setVersion(writeVersion);
 				}
-				hnList.setVersion(writeVersion);
 			}
 		}
-
 
 		// release locks, even if abort
 
@@ -677,8 +680,7 @@ public class TX {
 		localStorage.logVersionMap.clear();
 		localStorage.innerLogMap.clear();
 		localStorage.innerLogVersionMap.clear();
-		localStorage.hashReadSet.clear();
-		localStorage.hashWriteSet.clear();
+		localStorage.hmMap.clear();
 		localStorage.TX = false;
 		localStorage.readOnly = true;
 		localStorage.abortAll = false;

@@ -57,8 +57,13 @@ public class HashMap<K,V> {
         }
 
         //insert to read set:
-        localStorage.hashReadSet.add(hnList);
-
+        LocalHashMap hm = localStorage.hmMap.get(this);
+        if (hm == null) {
+        	hm = new LocalHashMap();
+        	localStorage.hmMap.put(this, hm);
+        }
+        hm.hashReadSet.add(hnList);
+        
         HashNode oldNode = writeSetGet(key, hnList);
 
         if (oldNode == null) {
@@ -99,8 +104,13 @@ public class HashMap<K,V> {
         }
 
         //insert to read set:
-        localStorage.hashReadSet.add(hnList);
-
+        LocalHashMap hm = localStorage.hmMap.get(this);
+        if (hm == null) {
+        	hm = new LocalHashMap();
+        	localStorage.hmMap.put(this, hm);
+        }
+        hm.hashReadSet.add(hnList);
+        
         // search old val
         V oldVal = null;
 
@@ -139,7 +149,12 @@ public class HashMap<K,V> {
         V oldVal = null;
 
         //insert to read set:
-        localStorage.hashReadSet.add(hnList);
+        LocalHashMap hm = localStorage.hmMap.get(this);
+        if (hm == null) {
+        	hm = new LocalHashMap();
+        	localStorage.hmMap.put(this, hm);
+        }
+        hm.hashReadSet.add(hnList);
         
         //insert to write set
         HashNode newNode = new HashNode(keyHash, key, value, null);
@@ -178,7 +193,12 @@ public class HashMap<K,V> {
         V oldVal = null;
 
         //insert to read set:
-        localStorage.hashReadSet.add(hnList);
+        LocalHashMap hm = localStorage.hmMap.get(this);
+        if (hm == null) {
+        	hm = new LocalHashMap();
+        	localStorage.hmMap.put(this, hm);
+        }
+        hm.hashReadSet.add(hnList);
 
         HashNode oldNode = writeSetGet(key, hnList);
         if (oldNode == null) {
@@ -229,10 +249,15 @@ public class HashMap<K,V> {
     // insert new node to the write set, and return the old node if existed
     private HashNode writeSetInsert(HashNode newNode, HashNodeList hnList) {
         LocalStorage localStorage = TX.lStorage.get();
-        java.util.HashMap<Object, HashNode> listWriteSet = localStorage.hashWriteSet.get(hnList);
+        LocalHashMap hm = localStorage.hmMap.get(this);
+        if (hm == null) {
+        	hm = new LocalHashMap();
+        	localStorage.hmMap.put(this, hm);
+        }
+        java.util.HashMap<Object, HashNode> listWriteSet = hm.hashWriteSet.get(hnList);
         if (listWriteSet == null) {
             listWriteSet = new java.util.HashMap<>();
-            localStorage.hashWriteSet.put(hnList, listWriteSet);
+            hm.hashWriteSet.put(hnList, listWriteSet);
         }
 
         HashNode oldNode = listWriteSet.put(newNode.getKey() , newNode);
@@ -245,7 +270,12 @@ public class HashMap<K,V> {
     // get node from the write set
     private HashNode writeSetGet(K key, HashNodeList hnList) {
         LocalStorage localStorage = TX.lStorage.get();
-        java.util.HashMap<Object, HashNode> listWriteSet = localStorage.hashWriteSet.get(hnList);
+        LocalHashMap hm = localStorage.hmMap.get(this);
+        if (hm == null) {
+        	hm = new LocalHashMap();
+        	localStorage.hmMap.put(this, hm);
+        }
+        java.util.HashMap<Object, HashNode> listWriteSet = hm.hashWriteSet.get(hnList);
         if (listWriteSet == null) {
             return null;
         }
