@@ -1,12 +1,14 @@
 import java.lang.reflect.Field;
+import java.util.concurrent.atomic.AtomicInteger;
+
 //import java.util.HashMap;
 import sun.misc.Unsafe;
 
-public class HashMap<K,V> {
+public class TXHashMap<K, V> {
     private static final int DEFAULT_SIZE = 8;
- 
+
     private HashNodeList[] table = new HashNodeList[DEFAULT_SIZE];
-    private int size;
+    protected AtomicInteger size = new AtomicInteger();
 
     // TODO: needed for fence?
     private static Unsafe unsafe = null;
@@ -30,7 +32,7 @@ public class HashMap<K,V> {
 		}
     }
 
-    public HashMap() {
+    public TXHashMap() {
         for (int i=0; i<table.length; ++i) {
             table[i] = new HashNodeList();
         }
@@ -84,6 +86,7 @@ public class HashMap<K,V> {
     public int size() {
         return 0;
     }
+
 
 
     public V get(K key) throws TXLibExceptions.AbortException {
@@ -166,6 +169,9 @@ public class HashMap<K,V> {
         }
         if (oldNode != null && oldNode.isDeleted == false) {
             oldVal = (V)oldNode.getValue();
+        } else{
+            //completely new node, increase size
+            hm.sizeDiff++; 
         }
 
         return oldVal;
@@ -209,6 +215,7 @@ public class HashMap<K,V> {
             oldVal = (V)oldNode.getValue();
             HashNode newNode = new HashNode(keyHash, key, oldVal, null);
             newNode.isDeleted = true;
+            hm.sizeDiff--;
             writeSetInsert(newNode, hnList);
         }
         return oldVal;

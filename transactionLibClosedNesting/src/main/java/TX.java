@@ -616,6 +616,8 @@ public class TX {
 					}
 					hnList.setVersion(writeVersion);
 				}
+				TXHashMap<?,?> globalMap = (TXHashMap<?,?>)entry.getKey();
+				globalMap.size.addAndGet(hm.sizeDiff);
 			}
 		}
 
