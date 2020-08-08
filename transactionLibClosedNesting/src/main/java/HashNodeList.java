@@ -16,7 +16,6 @@ public class HashNodeList {
 
     public void setVersion(long version) {
         long l = versionAndFlags.get();
-        assert(nlLock.isHeldByCurrent());
         l &= versionNegMask;
         l |= (version & (~versionNegMask));
         versionAndFlags.set(l);
