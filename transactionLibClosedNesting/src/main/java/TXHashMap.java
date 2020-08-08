@@ -1,14 +1,18 @@
 import java.lang.reflect.Field;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+
 
 //import java.util.HashMap;
 import sun.misc.Unsafe;
 
 public class TXHashMap<K, V> {
-    private static final int DEFAULT_SIZE = 8;
-
-    private HashNodeList[] table = new HashNodeList[DEFAULT_SIZE];
+    private static final int INITIAL_TABLE_LENGTH = 8;
+    private static final float LOAD_FACTOR = 0.75f;
+    private HashNodeList[] globalTable = new HashNodeList[INITIAL_TABLE_LENGTH];
     protected AtomicInteger size = new AtomicInteger();
+    protected AtomicBoolean inResize = new AtomicBoolean();
+    
 
     // TODO: needed for fence?
     private static Unsafe unsafe = null;
@@ -33,8 +37,8 @@ public class TXHashMap<K, V> {
     }
 
     public TXHashMap() {
-        for (int i=0; i<table.length; ++i) {
-            table[i] = new HashNodeList();
+        for (int i=0; i<globalTable.length; ++i) {
+            globalTable[i] = new HashNodeList();
         }
     }
     public void clear() {
@@ -43,6 +47,15 @@ public class TXHashMap<K, V> {
 
     public boolean containsKey(K key) {
         LocalStorage localStorage = TX.lStorage.get();
+        LocalHashMap hm = localStorage.hmMap.get(this);
+        if (hm == null) {
+        	hm = new LocalHashMap();
+            localStorage.hmMap.put(this, hm);
+            hm.table = globalTable;
+            hm.initialSize = size.get();
+        }
+        HashNodeList[] table = hm.table;
+
         int h;
         int keyHash = (key == null) ? 0 : (h = key.hashCode()) ^ (h >>> 16); // from java standard implementation.
         // TODO: handle the resize
@@ -59,11 +72,6 @@ public class TXHashMap<K, V> {
         }
 
         //insert to read set:
-        LocalHashMap hm = localStorage.hmMap.get(this);
-        if (hm == null) {
-        	hm = new LocalHashMap();
-        	localStorage.hmMap.put(this, hm);
-        }
         hm.hashReadSet.add(hnList);
         
         HashNode oldNode = writeSetGet(key, hnList);
@@ -83,14 +91,73 @@ public class TXHashMap<K, V> {
         return false;
     }
 
-    public int size() {
-        return 0;
+
+    private void resize() {
+        LocalStorage localStorage = TX.lStorage.get();
+        if (inResize.compareAndSet(false, true) == false) { 
+            //already in resize
+            // TODO :abort or not? need to decide..
+            // abort TX
+            localStorage.TX = false;
+            TXLibExceptions excep = new TXLibExceptions();
+            throw excep.new AbortException();
+        }
+        LocalHashMap hm = localStorage.hmMap.get(this);
+        if (hm.table != globalTable) {
+            // resize already happened, free resize lock and abort
+            inResize.set(false);
+            localStorage.TX = false;
+            TXLibExceptions excep = new TXLibExceptions();
+            throw excep.new AbortException();
+        }
+
+        HashNodeList[] oldTable = globalTable;
+        int oldTableLen = oldTable.length;
+
+        HashNodeList[] newTable = new HashNodeList[2*oldTableLen];
+        for (int i=0; i<newTable.length; ++i) {
+            newTable[i] = new HashNodeList();
+        }
+        // move nodes from old table to the new table. 
+        // the old NodeLists will stay locked.
+        for (int i = 0 ; i < oldTableLen ; ++i) {
+            HashNodeList hnList = oldTable[i];
+            hnList.lock();
+            newTable [i].setVersion(oldTable[i].getVersion());
+            newTable [i+oldTableLen].setVersion(oldTable[i].getVersion());
+            // search the write set node in the table hnList:
+			HashNode current = hnList.head;
+			while (current != null) {
+                HashNode next = current.next;
+                int newIdx = (newTable.length - 1) & current.hash;
+                current.next = newTable[newIdx].head;
+                newTable[newIdx].head = current;
+                current = next;
+            }
+        }
+        globalTable = newTable;
+        inResize.set(false);
+        // TODO :abort or not? need to decide..
+        //       if not, do we need to update hm.table to new globalTable?
+        // abort TX
+        localStorage.TX = false;
+        TXLibExceptions excep = new TXLibExceptions();
+        throw excep.new AbortException();
     }
 
 
 
     public V get(K key) throws TXLibExceptions.AbortException {
         LocalStorage localStorage = TX.lStorage.get();
+        LocalHashMap hm = localStorage.hmMap.get(this);
+        if (hm == null) {
+        	hm = new LocalHashMap();
+            localStorage.hmMap.put(this, hm);
+            hm.table = globalTable;
+            hm.initialSize = size.get();
+        }
+        HashNodeList[] table = hm.table;
+        
         int h;
         int keyHash = (key == null) ? 0 : (h = key.hashCode()) ^ (h >>> 16); // from java standard implementation.
         // TODO: handle the resize
@@ -107,11 +174,6 @@ public class TXHashMap<K, V> {
         }
 
         //insert to read set:
-        LocalHashMap hm = localStorage.hmMap.get(this);
-        if (hm == null) {
-        	hm = new LocalHashMap();
-        	localStorage.hmMap.put(this, hm);
-        }
         hm.hashReadSet.add(hnList);
         
         // search old val
@@ -132,9 +194,17 @@ public class TXHashMap<K, V> {
 
     public V put(K key, V value) throws TXLibExceptions.AbortException {
         LocalStorage localStorage = TX.lStorage.get();
+        LocalHashMap hm = localStorage.hmMap.get(this);
+        if (hm == null) {
+        	hm = new LocalHashMap();
+            localStorage.hmMap.put(this, hm);
+            hm.table = globalTable;
+            hm.initialSize = size.get();
+        }
+        HashNodeList[] table = hm.table;
+        
         int h;
         int keyHash = (key == null) ? 0 : (h = key.hashCode()) ^ (h >>> 16); // from java standard implementation.
-        // TODO: handle the resize
 
         int tableIdx = (table.length - 1) & keyHash; // TODO: should we save the table length in the tx?
         HashNodeList hnList = table[tableIdx];
@@ -152,11 +222,6 @@ public class TXHashMap<K, V> {
         V oldVal = null;
 
         //insert to read set:
-        LocalHashMap hm = localStorage.hmMap.get(this);
-        if (hm == null) {
-        	hm = new LocalHashMap();
-        	localStorage.hmMap.put(this, hm);
-        }
         hm.hashReadSet.add(hnList);
         
         //insert to write set
@@ -172,6 +237,11 @@ public class TXHashMap<K, V> {
         } else{
             //completely new node, increase size
             hm.sizeDiff++; 
+
+            // check if resize is needed
+            if (hm.initialSize + hm.sizeDiff > hm.table.length*LOAD_FACTOR) {
+                resize();
+            }
         }
 
         return oldVal;
@@ -179,6 +249,15 @@ public class TXHashMap<K, V> {
 
     public V remove(K key)  throws TXLibExceptions.AbortException {
         LocalStorage localStorage = TX.lStorage.get();
+        LocalHashMap hm = localStorage.hmMap.get(this);
+        if (hm == null) {
+        	hm = new LocalHashMap();
+            localStorage.hmMap.put(this, hm);
+            hm.table = globalTable;
+            hm.initialSize = size.get();
+        }
+        HashNodeList[] table = hm.table;
+        
         int h;
         int keyHash = (key == null) ? 0 : (h = key.hashCode()) ^ (h >>> 16); // from java standard implementation.
         // TODO: handle the resize
@@ -199,11 +278,6 @@ public class TXHashMap<K, V> {
         V oldVal = null;
 
         //insert to read set:
-        LocalHashMap hm = localStorage.hmMap.get(this);
-        if (hm == null) {
-        	hm = new LocalHashMap();
-        	localStorage.hmMap.put(this, hm);
-        }
         hm.hashReadSet.add(hnList);
 
         HashNode oldNode = writeSetGet(key, hnList);
@@ -257,10 +331,6 @@ public class TXHashMap<K, V> {
     private HashNode writeSetInsert(HashNode newNode, HashNodeList hnList) {
         LocalStorage localStorage = TX.lStorage.get();
         LocalHashMap hm = localStorage.hmMap.get(this);
-        if (hm == null) {
-        	hm = new LocalHashMap();
-        	localStorage.hmMap.put(this, hm);
-        }
         java.util.HashMap<Object, HashNode> listWriteSet = hm.hashWriteSet.get(hnList);
         if (listWriteSet == null) {
             listWriteSet = new java.util.HashMap<>();
@@ -275,10 +345,6 @@ public class TXHashMap<K, V> {
     private HashNode writeSetGet(K key, HashNodeList hnList) {
         LocalStorage localStorage = TX.lStorage.get();
         LocalHashMap hm = localStorage.hmMap.get(this);
-        if (hm == null) {
-        	hm = new LocalHashMap();
-        	localStorage.hmMap.put(this, hm);
-        }
         java.util.HashMap<Object, HashNode> listWriteSet = hm.hashWriteSet.get(hnList);
         if (listWriteSet == null) {
             return null;
