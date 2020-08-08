@@ -580,7 +580,7 @@ public class TX {
 		}
 
 		if (!abort) {
-			//hash table
+			//hash table commit
 			for (Entry<Object,LocalHashMap> entry : localStorage.hmMap.entrySet()) {
 				LocalHashMap hm = entry.getValue();
 				for (Entry<HashNodeList, HashMap<Object, HashNode>> wsEntry : hm.hashWriteSet.entrySet()) {
