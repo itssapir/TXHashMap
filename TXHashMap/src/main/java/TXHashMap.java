@@ -62,10 +62,21 @@ public class TXHashMap<K, V> {
 
         int tableIdx = (table.length - 1) & keyHash; // TODO: should we save the table length in the tx?
         HashNodeList hnList = table[tableIdx];
-        
-        // TX
 
-        if (hnList.isLocked() || hnList.getVersion() > localStorage.readVersion) {
+        // TX
+        if (hnList.isLocked()) {
+        	if (!hnList.isDepricated) {
+                // abort TX
+                localStorage.TX = false;
+                TXLibExceptions excep = new TXLibExceptions();
+                throw excep.new AbortException();
+        	} else {
+        		handleInResize();
+        		// TODO :update the local variables
+        	}       	
+        }
+     
+        if ( hnList.getVersion() > localStorage.readVersion) {
             // abort TX
             localStorage.TX = false;
             TXLibExceptions excep = new TXLibExceptions();
