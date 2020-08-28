@@ -4,10 +4,14 @@ public class HashNodeList {
     private static final long versionNegMask = 0x0L;
     private LockQueue nlLock = new LockQueue();
     public HashNode head;
+    public int index;
+    public boolean isDepricated;
     private AtomicLong versionAndFlags = new AtomicLong();
   
-    HashNodeList() {
+    HashNodeList(int idx) {
         this.head = null;
+        index = idx;
+        isDepricated = false;
     }
     
     public long getVersion() {
@@ -37,4 +41,5 @@ public class HashNodeList {
     public boolean isLocked() {
         return nlLock.isLocked();
     }
+
 }

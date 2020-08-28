@@ -38,7 +38,7 @@ public class TXHashMap<K, V> {
 
     public TXHashMap() {
         for (int i=0; i<globalTable.length; ++i) {
-            globalTable[i] = new HashNodeList();
+            globalTable[i] = new HashNodeList(i);
         }
     }
     public void clear() {
@@ -64,6 +64,7 @@ public class TXHashMap<K, V> {
         HashNodeList hnList = table[tableIdx];
         
         // TX
+
         if (hnList.isLocked() || hnList.getVersion() > localStorage.readVersion) {
             // abort TX
             localStorage.TX = false;
@@ -116,13 +117,14 @@ public class TXHashMap<K, V> {
 
         HashNodeList[] newTable = new HashNodeList[2*oldTableLen];
         for (int i=0; i<newTable.length; ++i) {
-            newTable[i] = new HashNodeList();
+            newTable[i] = new HashNodeList(i);
         }
         // move nodes from old table to the new table. 
         // the old NodeLists will stay locked.
         for (int i = 0 ; i < oldTableLen ; ++i) {
             HashNodeList hnList = oldTable[i];
             hnList.lock();
+            hnList.isDepricated = true;
             newTable [i].setVersion(oldTable[i].getVersion());
             newTable [i+oldTableLen].setVersion(oldTable[i].getVersion());
             // search the write set node in the table hnList:
@@ -351,6 +353,11 @@ public class TXHashMap<K, V> {
         }
         HashNode oldNode = listWriteSet.get(key);
         return oldNode;
+    }
+    
+    private void handleInResize() {
+    	// TODO: implement 
+    	return;
     }
 
 

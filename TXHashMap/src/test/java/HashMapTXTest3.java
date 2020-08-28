@@ -13,7 +13,7 @@ import static junit.framework.TestCase.assertEquals;
 public class HashMapTXTest3 {
 
     @Test
-    public void testHashMapMultiThreadMultiMap() throws InterruptedException {
+    public void testHashMapSerialization() throws InterruptedException {
         CountDownLatch latch = new CountDownLatch(1);
         TXHashMap<Integer, String> HM1 = new TXHashMap<>();
         TXHashMap<Integer, String> HM2 = new TXHashMap<>();

@@ -1,7 +1,12 @@
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.Map.Entry;
+import java.util.Set;
+import java.util.SortedMap;
+import java.util.TreeSet;
 import java.util.concurrent.atomic.AtomicLong;
 
 public class TX {
@@ -392,7 +397,16 @@ public class TX {
 		for (Entry<Object,LocalHashMap> entry : localStorage.hmMap.entrySet()) {
 			LocalHashMap hm = entry.getValue();
 			if (!abort) {
-				for (HashNodeList hnlist : hm.hashWriteSet.keySet()) {
+				Set<HashNodeList> sortedHNLSet = new TreeSet<>(new Comparator<HashNodeList>() {
+			        @Override
+			        public int compare(HashNodeList hnl1, HashNodeList hnl2) {
+			            return hnl1.index - hnl2.index;
+			        }
+			    });
+				sortedHNLSet.addAll(hm.hashWriteSet.keySet());
+				Iterator<HashNodeList> iter = sortedHNLSet.iterator();
+				while (iter.hasNext()) {
+					HashNodeList hnlist = iter.next();
 					if (!hnlist.tryLock()) {
 						abort = true;
 						break;
@@ -401,7 +415,7 @@ public class TX {
 				}
 			}
 
-	}
+		}
 		// validate read set
 
 		HashSet<LNode> readSet = localStorage.readSet;
