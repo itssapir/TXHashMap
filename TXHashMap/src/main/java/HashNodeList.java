@@ -5,13 +5,13 @@ public class HashNodeList {
     private LockQueue nlLock = new LockQueue();
     public HashNode head;
     public int index;
-    public boolean isDepricated;
+    public boolean isDeprecated;
     private AtomicLong versionAndFlags = new AtomicLong();
   
     HashNodeList(int idx) {
         this.head = null;
         index = idx;
-        isDepricated = false;
+        isDeprecated = false;
     }
     
     public long getVersion() {
