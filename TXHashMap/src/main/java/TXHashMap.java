@@ -39,146 +39,6 @@ public class TXHashMap<K, V> {
 		}
     }
     
-    public void clear() {
-
-    }
-
-    public boolean containsKey(K key) {
-        LocalStorage localStorage = TX.lStorage.get();
-        LocalHashMap hm = localStorage.hmMap.get(this);
-        if (hm == null) {
-        	hm = new LocalHashMap();
-            localStorage.hmMap.put(this, hm);
-            hm.localHMTable = globalTable;
-            hm.initialSize = size.get();
-        }
-        HashNodeList hnList = getHNList(key);
-
-        // TX
-        if (hnList.isLocked()) {
-        	if (!hnList.isDeprecated || hnList.getVersion() > localStorage.readVersion) {
-        		abortTX();
-        	} else {
-        		handleInResize();
-        		// TODO :update the local variables
-        		hnList = getHNList(key);
-        	}       	
-        }
-     
-        if ( hnList.getVersion() > localStorage.readVersion) {
-        	abortTX();
-        }
-
-        //insert to read set:
-        hm.hashReadSet.add(hnList);
-        
-        HashNode oldNode = writeSetGet(key, hnList);
-
-        if (oldNode == null) {
-            //check in table
-            oldNode = getNode(hnList, key).getSecond();
-        }
-        if (oldNode != null && oldNode.isDeleted == false) {
-            return true;
-        }
-
-        return false;
-    }
-
-    public boolean containsValue(Object value) {
-        return false;
-    }
-
-
-    private void resize() {
-        LocalStorage localStorage = TX.lStorage.get();
-        LocalHashMap hm = localStorage.hmMap.get(this);
-        if (hm.localHMTable.inResize.compareAndSet(false, true) == false) { 
-            // resize already happened, or is happening
-            // TODO :abort or not? need to decide..
-        	handleInResize();
-        	return;
-        }
-
-        HashNodeList[] oldTable = globalTable.table;
-        int oldTableLen = oldTable.length;
-        HMTable newGlobalTable = new HMTable(2*oldTableLen);
-        HashNodeList[] newTable = newGlobalTable.table;
-        
-        for (int i=0; i<newTable.length; ++i) {
-            newTable[i] = new HashNodeList(i);
-        }
-        // move nodes from old table to the new table. 
-        // the old NodeLists will stay locked.
-        for (int i = 0 ; i < oldTableLen ; ++i) {
-            HashNodeList hnList = oldTable[i];
-            hnList.lock();
-            hnList.isDeprecated = true;
-            newTable [i].setVersion(oldTable[i].getVersion());
-            newTable [i+oldTableLen].setVersion(oldTable[i].getVersion());
-            // search the write set node in the table hnList:
-			HashNode current = hnList.head;
-			while (current != null) {
-                HashNode next = current.next;
-                int newIdx = (newTable.length - 1) & current.hash;
-                current.next = newTable[newIdx].head;
-                newTable[newIdx].head = current;
-                current = next;
-            }
-        }
-        globalTable = newGlobalTable;
-        hm.localHMTable.resizeLatch.countDown();
-        // update local TX state and return
-        handleInResize();
-    }
-
-
-
-    public V get(K key) throws TXLibExceptions.AbortException {
-        LocalStorage localStorage = TX.lStorage.get();
-        LocalHashMap hm = localStorage.hmMap.get(this);
-        if (hm == null) {
-        	hm = new LocalHashMap();
-            localStorage.hmMap.put(this, hm);
-            hm.localHMTable = globalTable;
-            hm.initialSize = size.get();
-        }
-        HashNodeList hnList = getHNList(key);
-        
-        // TX
-        if (hnList.isLocked()) {
-        	if (!hnList.isDeprecated || hnList.getVersion() > localStorage.readVersion) {
-        		abortTX();
-        	} else {
-        		handleInResize();
-        		// TODO :update the local variables
-        		hnList = getHNList(key);
-        	}       	
-        }
-     
-        if ( hnList.getVersion() > localStorage.readVersion) {
-        	abortTX();
-        }
-
-        //insert to read set:
-        hm.hashReadSet.add(hnList);
-        
-        // search old val
-        V oldVal = null;
-
-        HashNode oldNode = writeSetGet(key, hnList);
-
-        if (oldNode == null) {
-            //check in table
-            oldNode = getNode(hnList, key).getSecond();
-        }
-        if (oldNode != null && oldNode.isDeleted == false) {
-            oldVal = (V)oldNode.getValue();
-        }
-
-        return oldVal;
-    }
-
     public V put(K key, V value) throws TXLibExceptions.AbortException {
         LocalStorage localStorage = TX.lStorage.get();
         LocalHashMap hm = localStorage.hmMap.get(this);
@@ -237,7 +97,52 @@ public class TXHashMap<K, V> {
         return oldVal;
     }
 
-    public V remove(K key)  throws TXLibExceptions.AbortException {
+    public V get(K key) throws TXLibExceptions.AbortException {
+	    LocalStorage localStorage = TX.lStorage.get();
+	    LocalHashMap hm = localStorage.hmMap.get(this);
+	    if (hm == null) {
+	    	hm = new LocalHashMap();
+	        localStorage.hmMap.put(this, hm);
+	        hm.localHMTable = globalTable;
+	        hm.initialSize = size.get();
+	    }
+	    HashNodeList hnList = getHNList(key);
+	    
+	    // TX
+	    if (hnList.isLocked()) {
+	    	if (!hnList.isDeprecated || hnList.getVersion() > localStorage.readVersion) {
+	    		abortTX();
+	    	} else {
+	    		handleInResize();
+	    		// TODO :update the local variables
+	    		hnList = getHNList(key);
+	    	}       	
+	    }
+	
+	    if ( hnList.getVersion() > localStorage.readVersion) {
+	    	abortTX();
+	    }
+	
+	    //insert to read set:
+	    hm.hashReadSet.add(hnList);
+	    
+	    // search old val
+	    V oldVal = null;
+	
+	    HashNode oldNode = writeSetGet(key, hnList);
+	
+	    if (oldNode == null) {
+	        //check in table
+	        oldNode = getNode(hnList, key).getSecond();
+	    }
+	    if (oldNode != null && oldNode.isDeleted == false) {
+	        oldVal = (V)oldNode.getValue();
+	    }
+	
+	    return oldVal;
+	}
+
+	public V remove(K key)  throws TXLibExceptions.AbortException {
         LocalStorage localStorage = TX.lStorage.get();
         LocalHashMap hm = localStorage.hmMap.get(this);
         if (hm == null) {
@@ -297,7 +202,54 @@ public class TXHashMap<K, V> {
 
     // TODO: other methods as required.
 
-    // insert new node to the write set, and return the old node if existed
+    public boolean containsKey(K key) {
+	    LocalStorage localStorage = TX.lStorage.get();
+	    LocalHashMap hm = localStorage.hmMap.get(this);
+	    if (hm == null) {
+	    	hm = new LocalHashMap();
+	        localStorage.hmMap.put(this, hm);
+	        hm.localHMTable = globalTable;
+	        hm.initialSize = size.get();
+	    }
+	    HashNodeList hnList = getHNList(key);
+	
+	    // TX
+	    if (hnList.isLocked()) {
+	    	if (!hnList.isDeprecated || hnList.getVersion() > localStorage.readVersion) {
+	    		abortTX();
+	    	} else {
+	    		handleInResize();
+	    		// TODO :update the local variables
+	    		hnList = getHNList(key);
+	    	}       	
+	    }
+	
+	    if ( hnList.getVersion() > localStorage.readVersion) {
+	    	abortTX();
+	    }
+	
+	    //insert to read set:
+	    hm.hashReadSet.add(hnList);
+	    
+	    HashNode oldNode = writeSetGet(key, hnList);
+	
+	    if (oldNode == null) {
+	        //check in table
+	        oldNode = getNode(hnList, key).getSecond();
+	    }
+	    if (oldNode != null && oldNode.isDeleted == false) {
+	        return true;
+	    }
+	
+	    return false;
+	}
+
+	public void clear() {
+	
+	}
+
+
+	// insert new node to the write set, and return the old node if existed
     private HashNode writeSetInsert(HashNode newNode, HashNodeList hnList) {
         LocalStorage localStorage = TX.lStorage.get();
         LocalHashMap hm = localStorage.hmMap.get(this);
@@ -391,6 +343,47 @@ public class TXHashMap<K, V> {
         return table[tableIdx];
     }
     
+    private void resize() {
+        LocalStorage localStorage = TX.lStorage.get();
+        LocalHashMap hm = localStorage.hmMap.get(this);
+        if (hm.localHMTable.inResize.compareAndSet(false, true) == false) { 
+            // resize already happened, or is happening
+            // TODO :abort or not? need to decide..
+        	handleInResize();
+        	return;
+        }
+
+        HashNodeList[] oldTable = globalTable.table;
+        int oldTableLen = oldTable.length;
+        HMTable newGlobalTable = new HMTable(2*oldTableLen);
+        HashNodeList[] newTable = newGlobalTable.table;
+        
+        for (int i=0; i<newTable.length; ++i) {
+            newTable[i] = new HashNodeList(i);
+        }
+        // move nodes from old table to the new table. 
+        // the old NodeLists will stay locked.
+        for (int i = 0 ; i < oldTableLen ; ++i) {
+            HashNodeList hnList = oldTable[i];
+            hnList.lock();
+            hnList.isDeprecated = true;
+            newTable [i].setVersion(oldTable[i].getVersion());
+            newTable [i+oldTableLen].setVersion(oldTable[i].getVersion());
+            // search the write set node in the table hnList:
+			HashNode current = hnList.head;
+			while (current != null) {
+                HashNode next = current.next;
+                int newIdx = (newTable.length - 1) & current.hash;
+                current.next = newTable[newIdx].head;
+                newTable[newIdx].head = current;
+                current = next;
+            }
+        }
+        globalTable = newGlobalTable;
+        hm.localHMTable.resizeLatch.countDown();
+        // update local TX state and return
+        handleInResize();
+    }
     
     private void abortTX() {
         // abort TX
