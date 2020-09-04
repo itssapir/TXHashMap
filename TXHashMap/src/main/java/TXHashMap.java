@@ -24,9 +24,6 @@ public class TXHashMap<K, V> {
 		try {
 			f = Unsafe.class.getDeclaredField("theUnsafe");
 		} catch (NoSuchFieldException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
         assert f != null;
@@ -34,13 +31,20 @@ public class TXHashMap<K, V> {
 		try {
 			unsafe = (Unsafe) f.get(null);
 		} catch (IllegalArgumentException | IllegalAccessException e) {
-			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
     }
     
     public V put(K key, V value) throws TXLibExceptions.AbortException {
         LocalStorage localStorage = TX.lStorage.get();
+        
+		// SINGLETON
+		if (!localStorage.TX) {
+			return putSingleton(key, value);
+		}
+		
+		
+        // TX
         LocalHashMap hm = localStorage.hmMap.get(this);
         if (hm == null) {
         	hm = new LocalHashMap();
@@ -52,19 +56,18 @@ public class TXHashMap<K, V> {
         int keyHash = (key == null) ? 0 : (h = key.hashCode()) ^ (h >>> 16); // from java standard implementation.
         HashNodeList hnList = getHNList(key);
         
-        // TX
         localStorage.readOnly = false;
-        if (hnList.isLocked()) {
-        	if (!hnList.isDeprecated || hnList.getVersion() > localStorage.readVersion) {
-        		abortTX();
-        	} else {
-        		handleInResize();
-        		// TODO :update the local variables
-        		hnList = getHNList(key);
-        	}       	
+        if (hnList.isDeprecatedAndOlderVersion(localStorage.readVersion)) {
+    		handleInResize();
+    		hnList = getHNList(key);
+    	}
+
+        if (hnList.isLocked() || hnList.getVersion() > localStorage.readVersion) {
+        	abortTX();
         }
-     
-        if ( hnList.getVersion() > localStorage.readVersion) {
+        
+        if (hnList.isSameVersionAndSingleton(localStorage.readVersion)) {
+        	TX.incrementAndGetVersion();
         	abortTX();
         }
     
@@ -97,8 +100,74 @@ public class TXHashMap<K, V> {
         return oldVal;
     }
 
-    public V get(K key) throws TXLibExceptions.AbortException {
+    private V putSingleton(K key, V value) {
+    	HMTable localTable;
+    	HashNodeList hnList;
+        int h;
+        int keyHash = (key == null) ? 0 : (h = key.hashCode()) ^ (h >>> 16); // from java standard implementation.
+
+        while (true) {
+        	localTable = globalTable;
+            int tableIdx = (localTable.table.length - 1) & keyHash;
+            hnList = localTable.table[tableIdx];
+            hnList.lock();
+            
+            if (hnList.isDeprecated()) {
+            	hnList.unlock();
+            	while (true) {
+	            	try {
+						localTable.resizeLatch.await();
+						break;
+					} catch (InterruptedException e) {
+						continue;
+					}
+            	}
+            	continue;
+            }
+            // got lock on valid hnList (not deprecated)
+            break;
+        }
+        
+        // search for existing key
+        V retVal = null;
+        HashNode current = hnList.head;
+		HashNode prev = null;
+				
+		while (current != null) {
+			if (current.getKey().equals(key)) {
+				retVal = (V)current.getValue();
+				current.value = value;
+				current.isDeleted = false;
+				break;
+			}
+			prev = current;
+			current = current.next;
+		}
+		
+		if (current == null) {
+			// add new node
+			if (prev == null) {
+				hnList.head = new HashNode(keyHash, key, value, null);
+			} else {
+				prev.next = new HashNode(keyHash, key, value, null);
+			}
+		}
+		
+		hnList.setVersionAndSingleton(TX.getVersion(), true);
+		hnList.unlock();
+		
+        return retVal;
+	}
+
+	public V get(K key) throws TXLibExceptions.AbortException {
 	    LocalStorage localStorage = TX.lStorage.get();
+	    
+		// SINGLETON
+		if (!localStorage.TX) {
+			return getSingleton(key);
+		}
+	    
+	    // TX
 	    LocalHashMap hm = localStorage.hmMap.get(this);
 	    if (hm == null) {
 	    	hm = new LocalHashMap();
@@ -107,21 +176,20 @@ public class TXHashMap<K, V> {
 	        hm.initialSize = size.get();
 	    }
 	    HashNodeList hnList = getHNList(key);
-	    
-	    // TX
-	    if (hnList.isLocked()) {
-	    	if (!hnList.isDeprecated || hnList.getVersion() > localStorage.readVersion) {
-	    		abortTX();
-	    	} else {
-	    		handleInResize();
-	    		// TODO :update the local variables
-	    		hnList = getHNList(key);
-	    	}       	
-	    }
-	
-	    if ( hnList.getVersion() > localStorage.readVersion) {
-	    	abortTX();
-	    }
+
+        if (hnList.isDeprecatedAndOlderVersion(localStorage.readVersion)) {
+    		handleInResize();
+    		hnList = getHNList(key);
+    	}
+
+        if (hnList.isLocked() || hnList.getVersion() > localStorage.readVersion) {
+        	abortTX();
+        }
+        
+        if (hnList.isSameVersionAndSingleton(localStorage.readVersion)) {
+        	TX.incrementAndGetVersion();
+        	abortTX();
+        }
 	
 	    //insert to read set:
 	    hm.hashReadSet.add(hnList);
@@ -142,8 +210,19 @@ public class TXHashMap<K, V> {
 	    return oldVal;
 	}
 
+	private V getSingleton(K key) {
+        return findKeySingleton(key).getSecond();
+	}
+
 	public V remove(K key)  throws TXLibExceptions.AbortException {
         LocalStorage localStorage = TX.lStorage.get();
+        
+		// SINGLETON
+		if (!localStorage.TX) {
+			return removeSingleton(key);
+		}
+		
+        // TX
         LocalHashMap hm = localStorage.hmMap.get(this);
         if (hm == null) {
         	hm = new LocalHashMap();
@@ -155,20 +234,19 @@ public class TXHashMap<K, V> {
         int keyHash = (key == null) ? 0 : (h = key.hashCode()) ^ (h >>> 16); // from java standard implementation.
         HashNodeList hnList = getHNList(key);
         
-        // TX
         localStorage.readOnly = false;
-        if (hnList.isLocked()) {
-        	if (!hnList.isDeprecated || hnList.getVersion() > localStorage.readVersion) {
-        		abortTX();
-        	} else {
-        		handleInResize();
-        		// TODO :update the local variables
-        		hnList = getHNList(key);
-        	}       	
+        if (hnList.isDeprecatedAndOlderVersion(localStorage.readVersion)) {
+    		handleInResize();
+    		hnList = getHNList(key);
+    	}
+
+        if (hnList.isLocked() || hnList.getVersion() > localStorage.readVersion) {
+        	abortTX();
         }
-     
-        if ( hnList.getVersion() > localStorage.readVersion) {
-            abortTX();
+        
+        if (hnList.isSameVersionAndSingleton(localStorage.readVersion)) {
+        	TX.incrementAndGetVersion();
+        	abortTX();
         }
     
         // search old val
@@ -200,10 +278,75 @@ public class TXHashMap<K, V> {
 
 
 
-    // TODO: other methods as required.
+    private V removeSingleton(K key) {
+    	HMTable localTable;
+    	HashNodeList hnList;
+        int h;
+        int keyHash = (key == null) ? 0 : (h = key.hashCode()) ^ (h >>> 16); // from java standard implementation.
 
+        while (true) {
+        	localTable = globalTable;
+            int tableIdx = (localTable.table.length - 1) & keyHash;
+            hnList = localTable.table[tableIdx];
+            hnList.lock();
+            
+            if (hnList.isDeprecated()) {
+            	hnList.unlock();
+            	while (true) {
+	            	try {
+						localTable.resizeLatch.await();
+						break;
+					} catch (InterruptedException e) {
+						continue;
+					}
+            	}
+            	continue;
+            }
+            // got lock on valid hnList (not deprecated)
+            break;
+        }
+        
+        // search for existing key
+        V retVal = null;
+        HashNode current = hnList.head;
+		HashNode prev = null;
+				
+		while (current != null) {
+			if (current.getKey().equals(key)) {
+				retVal = (V)current.getValue();
+				current.isDeleted = true;
+				hnList.setVersionAndSingleton(TX.getVersion(), true);
+				break;
+			}
+			prev = current;
+			current = current.next;
+		}
+		
+		if (current != null) {
+			// removed node, link prev to next node
+			if (prev == null) {
+				hnList.head = current.next;
+			} else {
+				prev.next = current.next;
+			}
+		}
+		
+		hnList.setVersionAndSingleton(TX.getVersion(), true);
+		hnList.unlock();
+		
+        return retVal;
+	}
+
+    
     public boolean containsKey(K key) {
 	    LocalStorage localStorage = TX.lStorage.get();
+	    
+		// SINGLETON
+		if (!localStorage.TX) {
+			return containsKeySingleton(key);
+		}
+		
+	    // TX
 	    LocalHashMap hm = localStorage.hmMap.get(this);
 	    if (hm == null) {
 	    	hm = new LocalHashMap();
@@ -213,20 +356,19 @@ public class TXHashMap<K, V> {
 	    }
 	    HashNodeList hnList = getHNList(key);
 	
-	    // TX
-	    if (hnList.isLocked()) {
-	    	if (!hnList.isDeprecated || hnList.getVersion() > localStorage.readVersion) {
-	    		abortTX();
-	    	} else {
-	    		handleInResize();
-	    		// TODO :update the local variables
-	    		hnList = getHNList(key);
-	    	}       	
-	    }
-	
-	    if ( hnList.getVersion() > localStorage.readVersion) {
-	    	abortTX();
-	    }
+        if (hnList.isDeprecatedAndOlderVersion(localStorage.readVersion)) {
+    		handleInResize();
+    		hnList = getHNList(key);
+    	}
+
+        if (hnList.isLocked() || hnList.getVersion() > localStorage.readVersion) {
+        	abortTX();
+        }
+        
+        if (hnList.isSameVersionAndSingleton(localStorage.readVersion)) {
+        	TX.incrementAndGetVersion();
+        	abortTX();
+        }
 	
 	    //insert to read set:
 	    hm.hashReadSet.add(hnList);
@@ -244,9 +386,11 @@ public class TXHashMap<K, V> {
 	    return false;
 	}
 
-	public void clear() {
-	
+	private boolean containsKeySingleton(K key) {
+		return findKeySingleton(key).getFirst();
 	}
+
+
 
 
 	// insert new node to the write set, and return the old node if existed
@@ -283,38 +427,39 @@ public class TXHashMap<K, V> {
         HashNode current = hnList.head;
 
         while (current != null){
+        	if (hnList.isDeprecatedAndOlderVersion(localStorage.readVersion)) {
+        		handleInResize();
+        		// Get new hnList for given key, and start iterations from scratch
+        		hnList = getHNList(key);
+                current = hnList.head;
+                continue;
+        	}
             if (hnList.isLocked()) {
-            	if (!hnList.isDeprecated || hnList.getVersion() > localStorage.readVersion) {
-                    abortTX();
-            	} else {
-            		handleInResize();
-            		// Get new hnList for given key, and start iterations from scratch
-            		hnList = getHNList(key);
-                    current = hnList.head;
-                    continue;
-            	}       	
+            		abortTX();    	
             }
          
-            // TODO: do we need fence?
             unsafe.loadFence();
             currKey = (K)current.getKey();
             HashNode next = current.next;
             unsafe.loadFence();
-            if (hnList.isLocked()) {
-            	if (!hnList.isDeprecated || hnList.getVersion() > localStorage.readVersion) {
-                    abortTX();
-            	} else {
-            		handleInResize();
-            		// Get new hnList for given key, and start iterations from scratch
-            		hnList = getHNList(key);
-                    current = hnList.head;
-                    continue;
-            	}       	
-            }
+            
+            if (hnList.isDeprecatedAndOlderVersion(localStorage.readVersion)) {
+        		handleInResize();
+        		// Get new hnList for given key, and start iterations from scratch
+        		hnList = getHNList(key);
+                current = hnList.head;
+                continue;
+        	}
          
-            if ( hnList.getVersion() > localStorage.readVersion) {
-                abortTX();
+            if (hnList.isLocked() || hnList.getVersion() > localStorage.readVersion) {
+            	abortTX();
             }
+            
+            if (hnList.isSameVersionAndSingleton(localStorage.readVersion)) {
+            	TX.incrementAndGetVersion();
+            	abortTX();
+            }
+            
             if (key.equals(currKey) && current.isDeleted == false) {
                 return new Pair<HashNodeList, HashNode>(hnList, current);
             }
@@ -323,9 +468,7 @@ public class TXHashMap<K, V> {
         return new Pair<HashNodeList, HashNode>(hnList, null);
     }
 
-    
-    
-    private HashNodeList getHNList(K key) {
+	private HashNodeList getHNList(K key) {
         LocalStorage localStorage = TX.lStorage.get();
         LocalHashMap hm = localStorage.hmMap.get(this);
         if (hm == null) {
@@ -339,16 +482,69 @@ public class TXHashMap<K, V> {
         int h;
         int keyHash = (key == null) ? 0 : (h = key.hashCode()) ^ (h >>> 16); // from java standard implementation.
 
-        int tableIdx = (table.length - 1) & keyHash; // TODO: should we save the table length in the tx?
+        int tableIdx = (table.length - 1) & keyHash;
         return table[tableIdx];
     }
     
-    private void resize() {
+
+    
+    private Pair<Boolean, V> findKeySingleton(K key) {
+	   	HMTable localTable = globalTable;
+		int h;
+	    int keyHash = (key == null) ? 0 : (h = key.hashCode()) ^ (h >>> 16); // from java standard implementation.
+	    int tableIdx = (localTable.table.length - 1) & keyHash;
+	
+	    HashNodeList hnList = localTable.table[tableIdx];
+	    // search for existing key
+	    K currKey = null;
+	    V retVal = null;
+	    HashNode current = hnList.head;
+	    
+	    boolean startOver = false;
+	    
+	    while (current != null){
+	    	if (startOver) {
+	    		localTable = globalTable;
+	    		tableIdx = (localTable.table.length - 1) & keyHash;
+	    		hnList = localTable.table[tableIdx];
+	    		currKey = null;
+	    		current = hnList.head;
+	    		startOver = false;
+	    		continue;
+	    	}
+	        long prevVer = -1;
+	        long curVer = hnList.getVersion();
+	        HashNode next = null;
+	        while (prevVer != curVer) {
+	        	prevVer = curVer;
+	        	unsafe.loadFence();
+	            currKey = (K)current.getKey();
+	            retVal = (V)current.getValue();
+	            next = current.next;
+	            unsafe.loadFence();
+	            if (hnList.isLocked()) {
+	            	startOver = true;
+	            	break;
+	            }
+	            curVer = hnList.getVersion();	
+	        }
+	        if (startOver) {
+	        	continue;
+	        }
+	
+	        if (key.equals(currKey) && current.isDeleted == false) {
+	        	return new Pair<Boolean,V>(true,retVal);
+	        }
+	        current = next;
+	    }
+	    return new Pair<Boolean,V>(false,null);
+	}
+
+	private void resize() {
         LocalStorage localStorage = TX.lStorage.get();
         LocalHashMap hm = localStorage.hmMap.get(this);
         if (hm.localHMTable.inResize.compareAndSet(false, true) == false) { 
             // resize already happened, or is happening
-            // TODO :abort or not? need to decide..
         	handleInResize();
         	return;
         }
@@ -366,9 +562,10 @@ public class TXHashMap<K, V> {
         for (int i = 0 ; i < oldTableLen ; ++i) {
             HashNodeList hnList = oldTable[i];
             hnList.lock();
-            hnList.isDeprecated = true;
-            newTable [i].setVersion(oldTable[i].getVersion());
-            newTable [i+oldTableLen].setVersion(oldTable[i].getVersion());
+            hnList.setDeprecated(true);
+            
+            newTable[i].setVersion(oldTable[i].getVersion());
+            newTable[i+oldTableLen].setVersion(oldTable[i].getVersion());
             // search the write set node in the table hnList:
 			HashNode current = hnList.head;
 			while (current != null) {
@@ -395,7 +592,6 @@ public class TXHashMap<K, V> {
     
 
     private void handleInResize() {
-    	// TODO: implement 
         LocalStorage localStorage = TX.lStorage.get();
         LocalHashMap hm = localStorage.hmMap.get(this);
         int oldTableLen = hm.localHMTable.table.length;

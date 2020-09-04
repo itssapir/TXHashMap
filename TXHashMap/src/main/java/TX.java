@@ -412,6 +412,11 @@ public class TX {
 						break;
 					}
 					lockedHNodeLists.add(hnlist);
+					
+					if (hnlist.isDeprecated()) {
+						abort = true;
+						break;
+					}
 				}
 			}
 
