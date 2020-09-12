@@ -563,6 +563,7 @@ public class TXHashMap<K, V> {
             HashNodeList hnList = oldTable[i];
             hnList.lock();
             hnList.setDeprecated(true);
+            hnList.unlock();
             
             newTable[i].setVersion(oldTable[i].getVersion());
             newTable[i+oldTableLen].setVersion(oldTable[i].getVersion());
