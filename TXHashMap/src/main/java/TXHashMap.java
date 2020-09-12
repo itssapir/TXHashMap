@@ -155,7 +155,9 @@ public class TXHashMap<K, V> {
 		
 		hnList.setVersionAndSingleton(TX.getVersion(), true);
 		hnList.unlock();
-		
+		if (size.incrementAndGet() > localTable.table.length*LOAD_FACTOR) {
+			resizeSingleton(localTable);
+		}
         return retVal;
 	}
 
@@ -332,6 +334,7 @@ public class TXHashMap<K, V> {
 		}
 		
 		hnList.setVersionAndSingleton(TX.getVersion(), true);
+		size.decrementAndGet();
 		hnList.unlock();
 		
         return retVal;
@@ -566,15 +569,17 @@ public class TXHashMap<K, V> {
             hnList.unlock();
             
             newTable[i].setVersion(oldTable[i].getVersion());
+            newTable[i].setSingleton(oldTable[i].isSingleton());
             newTable[i+oldTableLen].setVersion(oldTable[i].getVersion());
-            // search the write set node in the table hnList:
+            newTable[i+oldTableLen].setSingleton(oldTable[i].isSingleton());
+            
+            // Copy hnList nodes to new table:
 			HashNode current = hnList.head;
 			while (current != null) {
-                HashNode next = current.next;
-                int newIdx = (newTable.length - 1) & current.hash;
-                current.next = newTable[newIdx].head;
-                newTable[newIdx].head = current;
-                current = next;
+				int newIdx = (newTable.length - 1) & current.hash;
+				HashNode newNode = new HashNode(current.hash, current.getKey(), current.getValue(), newTable[newIdx].head);
+                newTable[newIdx].head = newNode;
+                current = current.next;
             }
         }
         globalTable = newGlobalTable;
@@ -583,6 +588,45 @@ public class TXHashMap<K, V> {
         handleInResize();
     }
     
+	private void resizeSingleton(HMTable localTable) {
+        if (localTable.inResize.compareAndSet(false, true) == false) { 
+            // resize already happened, or is happening
+        	return;
+        }
+
+        HashNodeList[] oldTable = globalTable.table;
+        int oldTableLen = oldTable.length;
+        HMTable newGlobalTable = new HMTable(2*oldTableLen);
+        HashNodeList[] newTable = newGlobalTable.table;
+        
+        for (int i=0; i<newTable.length; ++i) {
+            newTable[i] = new HashNodeList(i);
+        }
+        // move nodes from old table to the new table. 
+        for (int i = 0 ; i < oldTableLen ; ++i) {
+            HashNodeList hnList = oldTable[i];
+            hnList.lock();
+            hnList.setDeprecated(true);
+            hnList.unlock();
+            newTable[i].setVersion(oldTable[i].getVersion());
+            newTable[i].setSingleton(oldTable[i].isSingleton());
+            newTable[i+oldTableLen].setVersion(oldTable[i].getVersion());
+            newTable[i+oldTableLen].setSingleton(oldTable[i].isSingleton());
+            
+            // Copy hnList nodes to new table:
+ 			HashNode current = hnList.head;
+ 			while (current != null) {
+ 				int newIdx = (newTable.length - 1) & current.hash;
+ 				HashNode newNode = new HashNode(current.hash, current.getKey(), current.getValue(), newTable[newIdx].head);
+                 newTable[newIdx].head = newNode;
+                 current = current.next;
+             }
+        }
+        
+        globalTable = newGlobalTable;
+        localTable.resizeLatch.countDown();
+    }
+	
     private void abortTX() {
         // abort TX
         LocalStorage localStorage = TX.lStorage.get();
