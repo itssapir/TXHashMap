@@ -1,4 +1,5 @@
 import org.junit.Test;
+import org.junit.jupiter.api.RepeatedTest;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -16,7 +17,7 @@ import static junit.framework.TestCase.assertEquals;
  */
 public class HashMapTXTest5 {
 
-    @Test
+    @RepeatedTest(100)
     public void testTXLinkedListSingleton() {
         TXHashMap<Integer, String> HM = new TXHashMap<>();
         Integer zero = 0;
@@ -59,7 +60,7 @@ public class HashMapTXTest5 {
 
     }
 
-    @Test
+    @RepeatedTest(100)
     public void testLinkedListSingletonMultiThread() throws InterruptedException {
         CountDownLatch latch = new CountDownLatch(1);
         TXHashMap<Integer, String> HM = new TXHashMap<>();

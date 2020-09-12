@@ -1,4 +1,5 @@
 import org.junit.Test;
+import org.junit.jupiter.api.RepeatedTest;
 
 import java.util.concurrent.CountDownLatch;
 
@@ -6,7 +7,7 @@ import static junit.framework.TestCase.assertEquals;
 
 public class HashMapTXTest0 {
 
-    @Test
+    @RepeatedTest(100)
     public void testHashMapBasic() throws InterruptedException {
         CountDownLatch latch = new CountDownLatch(1);
         TXHashMap<Integer,String> HM = new TXHashMap<>();
