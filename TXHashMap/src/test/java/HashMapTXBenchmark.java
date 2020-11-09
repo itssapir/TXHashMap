@@ -24,120 +24,138 @@ public class HashMapTXBenchmark {
         
     	int numPerJobArr[] = {1,5,10,20,30,50,100};
     	int numJobsArr[]  = {10000, 50000, 100000, 500000};
+    	int numAvg = 3;
+    	int keyRange = 10000;
     	for (int numJobs : numJobsArr) {
         	for (int numPerJob : numPerJobArr) {
         		List<List<Pair<Integer, Integer>>> jobs = new ArrayList<>(); 
-            	createJobs(jobs, numJobs, numPerJob);
+            	createJobs(jobs, numJobs, numPerJob, keyRange);
             	System.out.println(String.format("Running with numJobs = %d , numPerJob = %d , warmupCycles = %d", numJobs, numPerJob, warmupCycles));
-            	runTXBenchmark(jobs);
-            	runOracleBenchmark(jobs);
+            	runTXBenchmark(jobs, numAvg);
+            	runOracleBenchmark(jobs, numAvg);
         	}
     	}	
     }
 
-    private void runOracleBenchmark(List<List<Pair<Integer,Integer>>> jobs) throws InterruptedException {
-		// TODO Auto-generated method stub
-    	CountDownLatch latch = new CountDownLatch(1);
-        ConcurrentHashMap<Integer, Integer> HM = new ConcurrentHashMap<>();
-        warmup(HM);
-        
-        List<Thread> threads = new ArrayList<>();
-        AtomicInteger idx = new AtomicInteger(0);
-        ReentrantLock lock = new ReentrantLock();
-        for (int i = 0; i < threadAmnt; ++i) {
-        	threads.add(new Thread(new RunOracle(i, latch, Op.PUT, HM, jobs, idx, lock)));
-        }
-        
-        for (Thread t : threads) {
-        	t.start();
-        }
-        
-        long startTime = System.nanoTime();
+    private void runOracleBenchmark(List<List<Pair<Integer,Integer>>> jobs, int numAvg) throws InterruptedException {
+		long putTime = 0;
+		long getTime = 0;
+		
+		for (int iter=0; iter<numAvg; ++iter) {
+			CountDownLatch latch = new CountDownLatch(1);
+	        ConcurrentHashMap<Integer, Integer> HM = new ConcurrentHashMap<>();
+	        warmup(HM);
+	        
+	        List<Thread> threads = new ArrayList<>();
+	        AtomicInteger idx = new AtomicInteger(0);
+	        ReentrantLock lock = new ReentrantLock();
+	        for (int i = 0; i < threadAmnt; ++i) {
+	        	threads.add(new Thread(new RunOracle(i, latch, Op.PUT, HM, jobs, idx, lock)));
+	        }
+	        
+	        for (Thread t : threads) {
+	        	t.start();
+	        }
+	        
+	        long startTime = System.nanoTime();
 
-        latch.countDown();
-        
-        for (Thread t : threads) {
-        	t.join();
-        }
+	        latch.countDown();
+	        
+	        for (Thread t : threads) {
+	        	t.join();
+	        }
 
-        long stopTime = System.nanoTime();
-        System.out.println("Oracle Put time: " + formatter.format(stopTime - startTime));
-        
-        threads.clear();
-        
-        for (int i = 0; i < threadAmnt; ++i) {
-        	threads.add(new Thread(new RunOracle(i, latch, Op.GET, HM, jobs, idx, lock)));
-        }
-        
-        for (Thread t : threads) {
-        	t.start();
-        }
-        
-        startTime = System.nanoTime();
+	        long stopTime = System.nanoTime();
+	        putTime += (stopTime - startTime);
+	        
+	        threads.clear();
+	        latch = new CountDownLatch(1);
+	        
+	        for (int i = 0; i < threadAmnt; ++i) {
+	        	threads.add(new Thread(new RunOracle(i, latch, Op.GET, HM, jobs, idx, lock)));
+	        }
+	        
+	        for (Thread t : threads) {
+	        	t.start();
+	        }
+	        
+	        startTime = System.nanoTime();
 
-        latch.countDown();
-        
-        for (Thread t : threads) {
-        	t.join();
-        }
+	        latch.countDown();
+	        
+	        for (Thread t : threads) {
+	        	t.join();
+	        }
 
-        stopTime = System.nanoTime();
-        System.out.println("Oracle Get time: " + formatter.format(stopTime - startTime));
+	        stopTime = System.nanoTime();
+	        getTime += (stopTime - startTime);
+
+		}
+        System.out.println("Oracle Put time: " + formatter.format(putTime/numAvg));
+        System.out.println("Oracle Get time: " + formatter.format(getTime/numAvg));
+
 	}
 
-	private void runTXBenchmark(List<List<Pair<Integer,Integer>>> jobs) throws InterruptedException {
-		// TODO Auto-generated method stub
-    	CountDownLatch latch = new CountDownLatch(1);
-        TXHashMap<Integer, Integer> HM = new TXHashMap<>();
-        warmup(HM);
-        List<Thread> threads = new ArrayList<>();
-        AtomicInteger idx = new AtomicInteger(0);
-        for (int i = 0; i < threadAmnt; ++i) {
-        	threads.add(new Thread(new RunTX(i, latch, Op.PUT, HM, jobs, idx)));
-        }
-        
-        for (Thread t : threads) {
-        	t.start();
-        }
-        
-        long startTime = System.nanoTime();
-
-        latch.countDown();
-        
-        for (Thread t : threads) {
-        	t.join();
-        }
-
-        long stopTime = System.nanoTime();
-        System.out.println("TX Put time:     " + formatter.format(stopTime - startTime));
-        
-        threads.clear();
-        
-        for (int i = 0; i < threadAmnt; ++i) {
-        	threads.add(new Thread(new RunTX(i, latch, Op.GET, HM, jobs, idx)));
-        }
-        
-        for (Thread t : threads) {
-        	t.start();
-        }
-        
-        startTime = System.nanoTime();
-
-        latch.countDown();
-        
-        for (Thread t : threads) {
-        	t.join();
-        }
-
-        stopTime = System.nanoTime();
-        System.out.println("TX Get time:     " + formatter.format(stopTime - startTime));
+	private void runTXBenchmark(List<List<Pair<Integer,Integer>>> jobs, int numAvg) throws InterruptedException {
+		long putTime = 0;
+		long getTime = 0;
+		
+		for (int iter=0; iter<numAvg; ++iter) {
+	    	CountDownLatch latch = new CountDownLatch(1);
+	        TXHashMap<Integer, Integer> HM = new TXHashMap<>();
+	        warmup(HM);
+	        List<Thread> threads = new ArrayList<>();
+	        AtomicInteger idx = new AtomicInteger(0);
+	        for (int i = 0; i < threadAmnt; ++i) {
+	        	threads.add(new Thread(new RunTX(i, latch, Op.PUT, HM, jobs, idx)));
+	        }
+	        
+	        for (Thread t : threads) {
+	        	t.start();
+	        }
+	        
+	        long startTime = System.nanoTime();
+	
+	        latch.countDown();
+	        
+	        for (Thread t : threads) {
+	        	t.join();
+	        }
+	
+	        long stopTime = System.nanoTime();
+	        putTime += (stopTime - startTime);
+	        
+	        threads.clear();
+	        latch = new CountDownLatch(1);
+	        
+	        for (int i = 0; i < threadAmnt; ++i) {
+	        	threads.add(new Thread(new RunTX(i, latch, Op.GET, HM, jobs, idx)));
+	        }
+	        
+	        for (Thread t : threads) {
+	        	t.start();
+	        }
+	        
+	        startTime = System.nanoTime();
+	
+	        latch.countDown();
+	        
+	        for (Thread t : threads) {
+	        	t.join();
+	        }
+	
+	        stopTime = System.nanoTime();
+	        getTime += (stopTime - startTime);
+		}
+        System.out.println("TX Put time: " + formatter.format(putTime/numAvg));
+        System.out.println("TX Get time: " + formatter.format(getTime/numAvg));
 	}
 
-	private void createJobs(List<List<Pair<Integer, Integer>>> jobs, int numJobs, int numPerJob) {
+	private void createJobs(List<List<Pair<Integer, Integer>>> jobs, int numJobs, int numPerJob, int keyRange) {
 		for (int i=0; i<numJobs; ++i) {
 			List<Pair<Integer, Integer>> job = new ArrayList<>();
 			for (int j=0; j<numPerJob; ++j) { 
-				int key = ThreadLocalRandom.current().nextInt(0, numJobs);
+				int key = ThreadLocalRandom.current().nextInt(0, keyRange);
 				int value = ThreadLocalRandom.current().nextInt(0, 100);
 
 				Pair<Integer, Integer> jobPair = new Pair<>(key, value);
