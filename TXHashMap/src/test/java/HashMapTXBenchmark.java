@@ -18,6 +18,7 @@ public class HashMapTXBenchmark {
 	DecimalFormat formatter = new DecimalFormat("####");
 	enum Op {PUT, GET};
 	static int warmupCycles = 10000;
+	static int threadAmnt = 6;
     @Test
     public void benchMark() throws InterruptedException {
         
@@ -39,7 +40,7 @@ public class HashMapTXBenchmark {
     	CountDownLatch latch = new CountDownLatch(1);
         ConcurrentHashMap<Integer, Integer> HM = new ConcurrentHashMap<>();
         warmup(HM);
-        int threadAmnt = 12;
+        
         List<Thread> threads = new ArrayList<>();
         AtomicInteger idx = new AtomicInteger(0);
         ReentrantLock lock = new ReentrantLock();
@@ -89,7 +90,6 @@ public class HashMapTXBenchmark {
     	CountDownLatch latch = new CountDownLatch(1);
         TXHashMap<Integer, Integer> HM = new TXHashMap<>();
         warmup(HM);
-        int threadAmnt = 12;
         List<Thread> threads = new ArrayList<>();
         AtomicInteger idx = new AtomicInteger(0);
         for (int i = 0; i < threadAmnt; ++i) {
