@@ -42,7 +42,7 @@ def parse(file):
         sheet[orColPut + str(row)] = int(oraclePut)
         sheet[orColGet + str(row)] = int(oracleGet)
         
-    wb.save(filename = "sheet.xlsx")
+    wb.save(filename = file + ".xlsx")
 
 
 

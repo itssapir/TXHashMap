@@ -1,5 +1,3 @@
-import org.junit.Test;
-
 import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.List;
@@ -18,23 +16,45 @@ public class HashMapTXBenchmark {
 	DecimalFormat formatter = new DecimalFormat("####");
 	enum Op {PUT, GET};
 	static int warmupCycles = 10000;
-	static int threadAmnt = 6;
-    @Test
+	static int threadAmnt = 16;
+
+    public static void main(String[] args) throws InterruptedException {
+	HashMapTXBenchmark bench = new HashMapTXBenchmark();
+	bench.benchMark();
+
+    }
+
     public void benchMark() throws InterruptedException {
         
-    	int numPerJobArr[] = {1,5,10,20,30,50,100};
-    	int numJobsArr[]  = {10000, 50000, 100000, 500000};
-    	int numAvg = 3;
-    	int keyRange = 10000;
-    	for (int numJobs : numJobsArr) {
-        	for (int numPerJob : numPerJobArr) {
-        		List<List<Pair<Integer, Integer>>> jobs = new ArrayList<>(); 
-            	createJobs(jobs, numJobs, numPerJob, keyRange);
-            	System.out.println(String.format("Running with numJobs = %d , numPerJob = %d , warmupCycles = %d", numJobs, numPerJob, warmupCycles));
-            	runTXBenchmark(jobs, numAvg);
-            	runOracleBenchmark(jobs, numAvg);
-        	}
+    	int numPerJobArr[] = {20, 40};
+    	int numOpsArr[]  = {1000000};
+    	int numThreadsArr[]  = {1,2,4,8,16,32};
+    	//int numPerJobArr[] = {1,10,20,30,40,50,60,70,80,90,100};
+    	//int numOpsArr[]  = {200000, 1000000, 2000000};
+    	int numAvg = 100;
+    	int keyRange = 100000;
+	for (int numThreads : numThreadsArr)  {
+		threadAmnt = numThreads;
+		for (int numOps : numOpsArr) {
+			for (int numPerJob : numPerJobArr) {
+				List<List<Pair<Integer, Integer>>> jobs = new ArrayList<>(); 
+				createJobs(jobs, numOps, numPerJob, keyRange);
+				System.out.println(String.format("Running with numThreads = %d , numJobs = %d , numPerJob = %d , warmupCycles = %d", threadAmnt, numOps, numPerJob, warmupCycles));
+				runTXBenchmark(jobs, numAvg);
+				runOracleBenchmark(jobs, numAvg);
+			}
+		}
     	}	
+	//for (int numOps : numOpsArr) {
+	//	for (int numPerJob : numPerJobArr) {
+	//		List<List<Pair<Integer, Integer>>> jobs = new ArrayList<>(); 
+	//		jobs.clear();
+	//        	createJobs(jobs, numOps, numPerJob, keyRange);
+	//		System.out.println(String.format("Running with numJobs = %d , numPerJob = %d , warmupCycles = %d", numOps, numPerJob, warmupCycles));
+	//		runTXBenchmark(jobs, numAvg);
+	//		runOracleBenchmark(jobs, numAvg);
+        //	}
+    	//}	
     }
 
     private void runOracleBenchmark(List<List<Pair<Integer,Integer>>> jobs, int numAvg) throws InterruptedException {
@@ -151,8 +171,8 @@ public class HashMapTXBenchmark {
         System.out.println("TX Get time: " + formatter.format(getTime/numAvg));
 	}
 
-	private void createJobs(List<List<Pair<Integer, Integer>>> jobs, int numJobs, int numPerJob, int keyRange) {
-		for (int i=0; i<numJobs; ++i) {
+	private void createJobs(List<List<Pair<Integer, Integer>>> jobs, int numOps, int numPerJob, int keyRange) {
+		for (int i=0; i<numOps/numPerJob; ++i) {
 			List<Pair<Integer, Integer>> job = new ArrayList<>();
 			for (int j=0; j<numPerJob; ++j) { 
 				int key = ThreadLocalRandom.current().nextInt(0, keyRange);
